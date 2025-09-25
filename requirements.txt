@@ -1,0 +1,13 @@
+temporalio
+fastapi
+uvicorn[standard]
+pydantic
+sqlalchemy>=2.0
+asyncpg
+alembic
+structlog
+python-json-logger
+tenacity            # (optional) for local retry helpers in non-Temporal code
+pytest
+pytest-asyncio
+httpx
