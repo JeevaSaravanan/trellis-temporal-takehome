@@ -39,6 +39,88 @@ services:
           -f /migrations/001_init.sql
         echo "Migrations applied."
     restart: "no"
+  
+  temporal:
+    image: temporalio/auto-setup:1.24.3
+    container_name: trellis-temporal
+    ports:
+      - "7233:7233"          # Temporal gRPC
+      - "8233:8233"          # (optional) Web UI
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PWD=${POSTGRES_PASSWORD}
+      - POSTGRES_SEEDS=db
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trellis-api
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      TEMPORAL_TARGET: temporal:7233
+      ORDERS_TASK_QUEUE: orders-tq
+      SHIPPING_TASK_QUEUE: shipping-tq
+      API_HOST: 0.0.0.0
+      API_PORT: 8080
+    command: uvicorn app.api.main:app --host 0.0.0.0 --port 8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    healthcheck:
+      # Only healthy when /readyz returns 200
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/readyz >/dev/null || exit 1"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+
+  worker_orders:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trellis-worker-orders
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      TEMPORAL_TARGET: temporal:7233
+      ORDERS_TASK_QUEUE: orders-tq
+    command: python -m app.workers.worker_orders
+    depends_on:
+      db:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+      api:
+        condition: service_healthy
+
+  worker_shipping:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trellis-worker-shipping
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      TEMPORAL_TARGET: temporal:7233
+      SHIPPING_TASK_QUEUE: shipping-tq
+    command: python -m app.workers.worker_shipping
+    depends_on:
+      db:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+      api:
+        condition: service_healthy
 
 volumes:
   db-data:
