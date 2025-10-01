@@ -7,6 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.stubs.flaky import flaky_call
+import json
 
 
 def _sum_amount(items: Sequence[Dict[str, Any]]) -> int:
@@ -23,16 +24,16 @@ async def order_received(
     await flaky_call()
 
     await session.execute(
-        text(
-            """
-            INSERT INTO orders (id, state, address_json)
-            VALUES (:id, 'received', CAST(:addr AS JSONB))
-            ON CONFLICT (id) DO UPDATE
-              SET updated_at = NOW()
-            """
-        ),
-        {"id": order_id, "addr": address},
-    )
+            text(
+                """
+                INSERT INTO orders (id, state, address_json)
+                VALUES (:id, 'received', CAST(:addr AS JSONB))
+                ON CONFLICT (id) DO UPDATE
+                  SET updated_at = NOW()
+                """
+            ),
+            {"id": order_id, "addr": json.dumps(address or {})},
+        )
 
     await session.execute(
         text(
@@ -41,7 +42,7 @@ async def order_received(
             VALUES (:id, 'order_received', CAST(:payload AS JSONB))
             """
         ),
-        {"id": order_id, "payload": {"items": items or [], "address": address or {}}},
+        {"id": order_id, "payload": json.dumps({"items": items or [], "address": address or {}})},
     )
 
     return {"order_id": order_id, "items": items or [], "address": address or {}}
@@ -116,11 +117,11 @@ async def payment_charged(session: AsyncSession, order: Dict[str, Any], payment_
         ),
         {
             "id": order["order_id"],
-            "payload": {
+            "payload": json.dumps({
                 "payment_id": payment_id,
                 "amount": int(row.amount),
                 "status": row.status,
-            },
+            }),
         },
     )
 

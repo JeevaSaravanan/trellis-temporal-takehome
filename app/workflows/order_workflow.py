@@ -88,4 +88,6 @@ class OrderWorkflow:
             task_queue="shipping-tq",
             retry_policy=RetryPolicy(maximum_attempts=1),
         )
-        return await child
+        result = await child
+        self.current_step = "shipped"
+        return result

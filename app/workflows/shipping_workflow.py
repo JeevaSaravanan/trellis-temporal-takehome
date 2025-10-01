@@ -4,6 +4,9 @@ from typing import Dict, Any
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from app.activities.shipping import prepare_package_activity, dispatch_carrier_activity
+import logging
+
+logger = logging.getLogger("ShippingWorkflow")
 
 ACT_OPTS = {
     "start_to_close_timeout": timedelta(seconds=1),
@@ -20,6 +23,7 @@ ACT_OPTS = {
 class ShippingWorkflow:
     @workflow.run
     async def run(self, order: Dict[str, Any]) -> str:
+        logger.info(f"ShippingWorkflow started for order: {order}")
         await workflow.execute_activity(prepare_package_activity, args=[order], **ACT_OPTS)
         try:
             await workflow.execute_activity(dispatch_carrier_activity, args=[order], **ACT_OPTS)
@@ -27,5 +31,7 @@ class ShippingWorkflow:
             parent = workflow.parent()
             if parent:
                 await workflow.signal_external_workflow(parent, "dispatch_failed", str(e))
+            logger.error(f"Dispatch carrier failed: {e}")
             raise
+        logger.info("ShippingWorkflow completed: Shipped")
         return "Shipped"
